@@ -252,7 +252,8 @@
 
         const redSystem = createBallSystem();
         const blueSystem = createBallSystem();
-        const voidSystem = createBallSystem();  // Independent void black hole
+        const voidSystem = createBallSystem();
+        const shrineSystem = createBallSystem();  // Independent void black hole
 
         // ============================================================
         //  PARTICLE SHAPE GENERATORS
@@ -385,6 +386,60 @@
                 r: C.outerColor.r, g: C.outerColor.g, b: C.outerColor.b, s: C.outerSize * (0.3 + Math.random() * 0.5)
             };
         }
+        function genShrine(i) {
+    const C = CONFIG.SHRINE;
+    const t = i / BALL_COUNT;
+
+    // ===== 50% OUTER RING (STRONGER VISUAL) =====
+    if (t < 0.5) {
+        const angle = Math.random() * Math.PI * 2;
+        const radius = C.radius;
+
+        return {
+            x: radius * Math.cos(angle),
+            y: radius * Math.sin(angle),
+            z: (Math.random() - 0.5) * 2,
+            r: C.innerColor.r * 1.5,
+            g: C.innerColor.g,
+            b: C.innerColor.b,
+            s: 2.2
+        };
+    }
+
+    // ===== 30% MID SLASH BAND =====
+    if (t < 0.8) {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = C.radius * 0.7 + Math.random() * 20;
+
+        return {
+            x: Math.cos(angle) * dist,
+            y: Math.sin(angle) * dist,
+            z: (Math.random() - 0.5) * 10,
+            r: C.bloodColor.r,
+            g: C.bloodColor.g,
+            b: C.bloodColor.b,
+            s: 1.2
+        };
+    }
+
+    
+    // ===== 20% CHAOTIC SLASH CORE (Directional Cuts) =====
+const angle = Math.random() * Math.PI * 2;
+const dist = C.radius * 0.4 + Math.random() * (C.slashSpread - C.radius * 0.4);
+
+// Create elongated radial slashes
+const stretch = 20 + Math.random() * 40;
+
+return {
+    x: Math.cos(angle) * dist,
+    y: Math.sin(angle) * dist,
+    z: (Math.random() - 0.5) * stretch,
+    r: C.bloodColor.r * 1.5,
+    g: C.bloodColor.g,
+    b: C.bloodColor.b,
+    s: 1.2
+};
+}
 
         function genEmpty(i) {
             return { x: 0, y: 0, z: 0, r: 0, g: 0, b: 0, s: 0 };
@@ -432,6 +487,7 @@
         // Void state
         let voidPhase = 0;   // 0=off, 1=warp speed (intro), 2=black hole (main)
         let voidTimer = 0;
+        let shrineActive = false;
 
         // ---- Gesture helpers ----
         function isFingerExtended(lm, tip, pip) { return lm[tip].y < lm[pip].y; }
@@ -443,6 +499,12 @@
             if (!isFingerExtended(lm, 8, 6) || !isFingerExtended(lm, 12, 10)) return false;
             return Math.hypot(lm[8].x - lm[12].x, lm[8].y - lm[12].y) < CONFIG.DETECTION.crossedFingerThreshold;
         }
+        function isOpenPalm(lm) {
+    return isFingerExtended(lm, 8, 6)   // index
+        && isFingerExtended(lm, 12, 10) // middle
+        && isFingerExtended(lm, 16, 14) // ring
+        && isFingerExtended(lm, 20, 18); // pinky
+}
         function detectPointing(lm) {
             // Bắn: dơ ngón trỏ + áp út + út (đồng thời), ngón giữa co
             return isFingerExtended(lm, 8, 6)
@@ -471,28 +533,46 @@
             let crossedScreen = null;
 
             if (results.multiHandLandmarks && results.multiHandedness) {
-                for (let h = 0; h < results.multiHandLandmarks.length; h++) {
-                    const lm = results.multiHandLandmarks[h];
-                    const label = results.multiHandedness[h].label;
-                    const isLeft = label === 'Right';  // MP mirrored
-                    const isRight = label === 'Left';
+    for (let h = 0; h < results.multiHandLandmarks.length; h++) {
+        const lm = results.multiHandLandmarks[h];
 
-                    if (isCrossedFingers(lm)) {
-                        if (isLeft) leftCrossed = true;
-                        if (isRight) rightCrossed = true;
-                        crossedScreen = lmToScreen(lm[9]);
-                    } else if (detectPointing(lm)) {
-                        // 3 ngón (trỏ+áp út+út) = charge để bắn
-                        const middleTip = lmToScreen(lm[12]);
-                        if (isLeft) { leftSnap = true; leftIndex = middleTip; }
-                        if (isRight) { rightSnap = true; rightIndex = middleTip; }
-                    } else if (isOnlyIndexExtended(lm)) {
-                        const tip = lmToScreen(lm[8]);
-                        if (isLeft) leftIndex = tip;
-                        if (isRight) rightIndex = tip;
-                    }
-                }
-            }
+        // 1️⃣ Determine hand side FIRST
+        const label = results.multiHandedness[h].label;
+        const isLeft = label === 'Right';   // MediaPipe mirrored
+        const isRight = label === 'Left';
+
+        // 2️⃣ PRIORITY: Void (crossed fingers)
+        if (isCrossedFingers(lm)) {
+            if (isLeft) leftCrossed = true;
+            if (isRight) rightCrossed = true;
+            crossedScreen = lmToScreen(lm[9]);
+
+            shrineActive = false; // Void overrides Shrine
+            continue; // Skip lower gesture checks for this hand
+        }
+
+        // 3️⃣ PRIORITY: Shrine (open palm)
+        if (isOpenPalm(lm)) {
+            shrineActive = true;
+            continue;
+        }
+
+        // 4️⃣ Charge gesture (3 fingers)
+        if (detectPointing(lm)) {
+            const middleTip = lmToScreen(lm[12]);
+            if (isLeft) { leftSnap = true; leftIndex = middleTip; }
+            if (isRight) { rightSnap = true; rightIndex = middleTip; }
+            continue;
+        }
+
+        // 5️⃣ Single index (normal red/blue)
+        if (isOnlyIndexExtended(lm)) {
+            const tip = lmToScreen(lm[8]);
+            if (isLeft) leftIndex = tip;
+            if (isRight) rightIndex = tip;
+        }
+    }
+}
 
             // ===== DEBUG: Draw hand landmarks =====
             if (CONFIG.DEBUG && CONFIG.DEBUG.showLandmarks) {
@@ -572,7 +652,10 @@
                     }
                 }
             }
-
+            // If no open palm detected this frame → disable shrine
+if (!results.multiHandLandmarks || !results.multiHandLandmarks.some(lm => isOpenPalm(lm))) {
+    shrineActive = false;
+}
             const prevTech = currentTechnique;
 
             // ═══════════════════════════════════════════════
@@ -892,6 +975,8 @@
 
         function animate() {
             requestAnimationFrame(animate);
+            // ===== TEMP TEST: Force Malevolent Shrine =====
+
 
             // ═══════════════════════════════════════════════
             //  FUSION ANIMATION (binary star orbit → collision → purple)
@@ -930,6 +1015,7 @@
                     // Speed up rotation of the individual particles during orbit
                     redSystem.points.rotation.z -= 0.15;
                     blueSystem.points.rotation.z += 0.15;
+                    
 
                     // COLLISION check — orbit radius small enough
                     if (fusionRadius < FC.collisionRadius) {
@@ -1039,6 +1125,28 @@
             updateSystem(redSystem);
             updateSystem(blueSystem);
             updateSystem(voidSystem);
+            updateSystem(shrineSystem);
+            // ===== Shrine Activation =====
+if (shrineActive) {
+    if (shrineSystem.currentShape !== 'shrine') {
+        setShape(shrineSystem, genShrine);
+        shrineSystem.currentShape = 'shrine';
+    }
+
+    shrineSystem.visible = true;
+    shrineSystem.opacity = 1;
+    shrineSystem.targetWorldPos.set(0, 0, 0);
+
+    bloomPass.strength = CONFIG.SHRINE.bloom;
+    shakeIntensity = CONFIG.SHRINE.shake;
+} else {
+    shrineSystem.opacity -= CONFIG.ANIMATION.fadeOutSpeed;
+    if (shrineSystem.opacity <= 0) {
+        shrineSystem.visible = false;
+        shrineSystem.opacity = 0;
+        shrineSystem.currentShape = '';
+    }
+}
 
             // Void handling (Warp Animation)
             if (currentTechnique === 'void') {
@@ -1075,12 +1183,16 @@
                 // Fade out dim overlay if not void
                 dimOverlay.style.opacity = 0;
             }
+            if (shrineSystem.visible && currentTechnique !== 'void') {
+    dimOverlay.style.opacity = 0.5;
+}
 
             // Rotation per technique
             const rRot = fusionActive ? -0.15 : (currentTechnique === 'red' || currentTechnique === 'both' ? CONFIG.RED.rotationSpeed : (currentTechnique === 'purple' ? CONFIG.PURPLE.rotationSpeedA : (currentTechnique === 'void' ? 0.003 : CONFIG.ANIMATION.neutralRotation)));
             const bRot = fusionActive ? 0.15 : (currentTechnique === 'blue' || currentTechnique === 'both' ? CONFIG.BLUE.rotationSpeed : (currentTechnique === 'purple' ? CONFIG.PURPLE.rotationSpeedB : (currentTechnique === 'void' ? -0.003 : -CONFIG.ANIMATION.neutralRotation)));
             redSystem.points.rotation.z += rRot;
             blueSystem.points.rotation.z += bRot;
+            shrineSystem.points.rotation.z += 0.01;
             if (currentTechnique === 'purple') {
                 redSystem.points.rotation.y += CONFIG.PURPLE.rotationY;
                 blueSystem.points.rotation.y -= CONFIG.PURPLE.rotationY;

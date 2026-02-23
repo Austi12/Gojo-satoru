@@ -104,7 +104,8 @@ const CONFIG = {
         orbitBloom: 3.5,
         orbitShake: 0.3,
     },
-
+    // ===================MALEVOLENT SHRINE ===================
+    
     // =================== UNLIMITED VOID ===================
     VOID: {
         ringRadius: 22,             // Bán kính vòng accretion chính
@@ -175,6 +176,17 @@ const CONFIG = {
         cameraZ: 55,            // Khoảng cách camera 3D
         fov: 75,                // Field of view
     },
+    // =================== MALEVOLENT SHRINE ===================
+SHRINE: {
+    radius: 60,              // Overall domain size
+    ringThickness: 6,        // Torii-style ring thickness
+    slashCount: 2000,        // Radial slash particles
+    slashSpread: 120,        // How far slashes extend outward
+    bloodColor: { r: 2.0, g: 0.1, b: 0.1 },
+    innerColor: { r: 1.5, g: 0.0, b: 0.0 },
+    bloom: 4.5,
+    shake: 1.5,
+},
 
     // =================== DEBUG ===================
     DEBUG: {
